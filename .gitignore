@@ -1,0 +1,55 @@
+# =============================================================================
+# OpenCode global config — never commit secrets, caches, or build output.
+# =============================================================================
+
+# ---- Secrets & credentials -------------------------------------------------
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.cer
+*.crt
+*.p12
+*.pfx
+credentials*
+*credentials.json
+auth.json
+*_API_KEY*
+*.token
+*.secret
+~/.strix/
+
+# ---- Dependencies / install state ------------------------------------------
+node_modules/
+package.json
+package-lock.json
+bun.lock
+npm-shrinkwrap.json
+install-state
+ecc-install-state.json
+
+# ---- Build output & caches -------------------------------------------------
+dist/
+build/
+*.tsbuildinfo
+.cache/
+.tmp/
+*.egg-info/
+__pycache__/
+
+# ---- Logs -------------------------------------------------------------------
+*.log
+logs/
+nohup.out
+debug.log
+opencode.log
+
+# ---- Editor / OS ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
