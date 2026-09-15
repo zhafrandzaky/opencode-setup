@@ -166,6 +166,38 @@ Keduanya berjalan on-demand sehingga tidak membebani context window saat tidak d
 
 Semua binary global ada di `PATH` melalui `~/.local/bin` dan profile shell (`.bashrc`/`.zshrc`/`.profile`) — login shell baru selalu menemukan `browser-use`, `strix`, `uv`, `sg`, `playwright`.
 
+### Fish Shell — Environment Setup
+
+Jika login shell memakai **Fish** (`/usr/bin/fish`, versi 4.x), pastikan `~/.config/fish/config.fish` berisi blok berikut (**urutan penting**: fnm sebelum `node`/`npm` dipanggil):
+
+```fish
+# -- OpenCode / global tooling environment --
+# Local binaries: strix, browser-use, uv, dll. (idempotent)
+fish_add_path ~/.local/bin
+
+# Node version manager — WAJIB di-source sebelum node/npm di bawah
+fnm env --use-on-cd | source
+
+# Global npm modules path (dibutuhkan loader NODE_PATH)
+set -gx NODE_PATH (npm root -g 2>/dev/null)
+```
+
+Penjelasan poin penting:
+
+- **`fish_add_path ~/.local/bin`** — menambahkan direktori binary lokal (strix, browser-use, uv, script ECC). Idempotent: tidak menciptakan duplikat di `fish_user_paths` meski dijalankan berulang. Path ini juga ter-cover otomatis oleh universal variable `fish_user_paths` dan `~/.config/fish/conf.d/uv.env.fish` (`source "$HOME/.local/bin/env.fish"`).
+- **`fnm env --use-on-cd | source`** — mengaktifkan Node version manager per-direktori. Tanpa ini, `node`/`npm` (hanya tersedia via fnm di mesin ini) tidak akan ditemukan dari Fish. Tidak ada konflik dengan `NODE_PATH` karena keduanya menunjuk versi node yang sama (mis. v24.20.0).
+- **`set -gx NODE_PATH (npm root -g)`** — mengekspor path ke module global npm (mis. `~/.local/share/fnm/node-versions/v24.20.0/installation/lib/node_modules`), dibutuhkan tool yang meng-import paket global (Playwright, ast-grep) via loader `NODE_PATH`.
+
+Verifikasi cepat dari sesi Fish:
+
+```fish
+which strix browser-use uv sg playwright   # semua harus ter-resolve
+echo $NODE_PATH                            # path ke module global npm
+fnm current                                # mis. v24.20.0
+```
+
+> **Catatan agnostik shell:** hook `shell.env` dari `plugins/dotenv.ts` bekerja di level OpenCode (men-spawn child process `bash`/`sh` untuk tool), sepenuhnya **tidak bergantung** pada login shell Anda. Nilai dari `~/.config/opencode/.env` tetap ter-inject ke setiap process child mana pun yang dipakai OpenCode.
+
 ---
 
 ## Quick Start / Instalasi di Mesin Baru
