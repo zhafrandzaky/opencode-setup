@@ -1,243 +1,374 @@
-# OpenCode ECC Plugin
+# OpenCode Global Configuration
 
-> WARNING: This README is specific to OpenCode usage.
-> If you installed ECC via npm (e.g. `npm install opencode-ecc`), refer to the root README instead.
+> Konfigurasi global **Everything Claude Code (ECC) 2.2.1** untuk **OpenCode** — agent orchestrasi, skill, command, hook/plugin, serta integrasi tooling global (Playwright, ast-grep, Browser Use, Strix, Superpowers, dan dotenv) yang siap pakai di mana pun OpenCode dijalankan.
 
-ECC plugin for OpenCode - agents, commands, hooks, and skills.
+| Bagian | Isi |
+|--------|-----|
+| [Overview](#overview--pendahuluan) | Apa repository ini dan apa saja isinya |
+| [Fitur Utama & Arsitektur Tooling](#fitur-utama--arsitektur-tooling) | Ringkasan fungsional setiap komponen terintegrasi |
+| [Struktur Repositori](#struktur-repositori) | Peta folder `~/.config/opencode/` |
+| [Prasyarat Sistem](#prasyarat-sistem) | Node.js, Python/uv, Docker, dll. |
+| [Quick Start / Instalasi di Mesin Baru](#quick-start--instalasi-di-mesin-baru) | Langkah dari nol sampai siap pakai |
+| [Konfigurasi Environment](#konfigurasi-environment) | `.env.example`, auto-load, variabel wajib vs opsional |
+| [Alur Kerja & Contoh Prompt](#alur-kerja--contoh-prompt) | Contoh nyata coding, debugging, E2E, code graph, security audit |
+| [Pemecahan Masalah](#pemecahan-masalah) | Masalah umum & perbaikannya |
 
-## Installation
+---
 
-## Installation Overview
+## Overview / Pendahuluan
 
-There are two ways to use ECC:
+Repository ini adalah **harness konfigurasi global** milik `~/.config/opencode/`. Saat sesi OpenCode dibuka di direktori proyek mana pun, OpenCode otomatis membaca `opencode.json` (dan `opencode.jsonc`) dari sini, lalu:
 
-1. **npm package (recommended for most users)**
-   Install via npm/bun/yarn and use the `ecc-install` CLI to set up rules and agents.
+- memuat **26 agent** (1 primary + 25 subagent) untuk peran terkhusus (planner, code-reviewer, tdd-guide, dll.),
+- memuat **26 slash command** yang memetakan prompt ke agent yang tepat (`/plan`, `/tdd`, `/code-review`, ...),
+- memuat **11 skill ECC** sebagai instruction + **218 skill** di `skills/` sebagai pustaka on-demand,
+- menjalankan **plugin ECC hooks + 8 custom tools** (`./plugins`) dan **Obra Superpowers**,
+- **meng-inject environment** dari `~/.config/opencode/.env` ke setiap sub-proses via plugin `plugins/dotenv.ts`,
+- menyediakan **katalog MCP server** siap-pasang di `mcp-configs/mcp-servers.json`.
 
-2. **Direct clone / plugin mode**
-   Clone the repository and run OpenCode directly inside it.
+Hasilnya: sekumpulan aturan, peran, skill, dan tooling yang konsisten — tanpa perlu meng-copy konfigurasi per proyek.
 
-Choose the method that matches your workflow below.
+---
 
-### Option 1: npm Package
+## Fitur Utama & Arsitektur Tooling
+
+### 1. Everything Claude Code (ECC) 2.2.1 — Core Harness
+
+Fondasi dari seluruh setup. Terpasang via `node scripts/install-apply.js --target opencode --profile full` dan terdaftar sebagai plugin `./plugins` pada `opencode.json`.
+
+| Komponen | Jumlah | Lokasi |
+|----------|--------|--------|
+| **Agents** | 26 (1 primary `build` + 25 subagent) | `agent` di `opencode.json`, prompt di `prompts/agents/` |
+| **Commands** | 26 terdaftar (100 file shim di `commands/`) | `command` di `opencode.json` |
+| **Skills** | 218 (11 dimuat via `instructions`, sisanya on-demand) | `skills/` |
+| **Custom Tools** | 8 | plugin `./plugins` (`tools/`) |
+| **Rules / Instructions** | 14 file instruction + `AGENTS.md` | lihat `instructions/INSTRUCTIONS.md` |
+
+**Agent utama:** `build` (mode primary) dengan akses read/write/edit/bash + tool `changed-files`. Subagent lain dibatasi read-only (planner, architect, reviewer) untuk keamanan, atau read/write/edit untuk pekerjaan eksekusi (tdd-guide, build-error-resolver, e2e-runner, dll.).
+
+**8 custom tools dari plugin:**
+`run-tests` · `check-coverage` · `security-audit` · `format-code` · `lint-check` · `git-summary` · `changed-files` · `dependency-analyzer`
+
+**Plugin hooks** (opt-in via `ECC_HOOK_PROFILE`, lihat [Konfigurasi Environment](#konfigurasi-environment)): auto-format Prettier, TypeScript check, peringatan `console.log`, notifikasi desktop, deteksi secret, pengingat git push, audit file doc, session context, compacting, todo progress, `shell.env` (inject environment), dan permission auto-approve. Profil: `minimal` / `standard` / `strict`, plus fitur nonaktif per-hook via `ECC_DISABLED_HOOKS`.
+
+> Catatan: pemasangan dibuat dengan `--no-hooks`; hooks hanya aktif jika Anda sengaja mengatur `ECC_HOOK_PROFILE` di `.env`.
+
+### 2. Obra Superpowers Plugin — Skill Tambahan
+
+Plugin kedua di `opencode.json`: `superpowers@git+https://github.com/obra/superpowers.git`. Menambah **14 skill** yang memperkuat workflow harian:
+
+- `using-superpowers`, `writing-plans`, `executing-plans` — planning & eksekusi terstruktur
+- `test-driven-development`, `verification-before-completion` — TDD & verifikasi
+- `systematic-debugging` — debugging sistematis (root cause, bukan tebak-tebakan)
+- `brainstorming`, `writing-skills`, `subagent-driven-development`, `dispatching-parallel-agents`
+- `using-git-worktrees`, `finishing-a-development-branch`
+- `requesting-code-review`, `receiving-code-review`
+
+### 3. Playwright CLI + Headless Browser
+
+Install global (npm): `playwright` **1.63.0** dengan browser Chromium **1243** + headless shell di `~/.cache/ms-playwright`. Digunakan untuk:
+
+- E2E testing (`/e2e`, agent `e2e-runner`, skill `e2e-testing`)
+- Screenshot & snapshot halaman: `npx playwright screenshot <url> <file>`
+- Codegen: `npx playwright codegen <url>`
+
+### 4. Code Graph & AST Analyzer (ast-grep / sg)
+
+`ast-grep` **0.45.3** (terpasang npm global, binari `sg`). Untuk pencarian & rewrite berbasis **struktur AST** — pengganti regex yang rapuh:
 
 ```bash
-npm install ecc-universal
+sg -p 'pattern' -l <lang> [dir]      # structural search
+sg -p 'old_pat' -r 'new_pat' -l ts  # structural rewrite
+sg -p '...' --json                   # output JSON untuk konsumsi programatik
 ```
 
-Add to your `opencode.json`:
+Cocok untuk mapping dependency, menemukan seluruh pemanggilan fungsi, dan refactor massal yang aman.
+
+### 5. Browser Automation — Browser Use (browser-harness)
+
+`browser-use` **0.1.13** (browser-harness) terpasang sebagai **uv tool** di `~/.local/bin` (`bu`, `browser-use`). Otomasi navigasi browser interaktif dengan bantuan agent; daemon auto-start. Opsional auth cloud via `BROWSER_USE_API_KEY`, dan opt-in autospawn via `BU_AUTOSPAWN=1`.
+
+### 6. Security Scanner — Strix
+
+`strix` **1.6.2** (uv tool di `~/.local/bin`), statik/dinamik pentest terhadap code, web app, dan API. **Membutuhkan Docker daemon berjalan** + `STRIX_LLM` dan `LLM_API_KEY`. Konfigurasi persisten di `~/.strix/cli-config.json`.
+
+```bash
+strix --target <dir|url>          # interactive
+strix -n --target <dir|url>       # headless (exit non-zero jika ada temuan)
+```
+
+### 7. Custom Dotenv Plugin (`plugins/dotenv.ts`)
+
+OpenCode tidak membaca `.env` secara bawaan. Plugin kecil ini menambal kekurangan tersebut:
+
+- Parse `~/.config/opencode/.env` saat OpenCode start (mendukung komentar `#`, `export`, kutip, value berisi spasi),
+- **Inject** ke environment proses & ke setiap sub-proses shell/tool via hook `shell.env` (Strix, browser-use, Playwright, script ECC, MCP server — semuanya melihat nilai yang sama),
+- Nilai environment asli shell **selalu menang** (tidak pernah menimpa),
+- Terdaftar via export `dotenvPlugin` di `plugins/index.ts` (default + named export keduanya dimuat OpenCode).
+
+### 8. Otomatisasi Komponen UI On-demand (shadcn/ui & Magic UI)
+
+Dua jalur untuk menambah komponen UI tanpa menulis dari nol, sesuai kebutuhan sesi:
+
+- **shadcn/ui** — CLI on-demand: `npx shadcn@latest add <komponen>` langsung di proyek, komponen ter-generate ke `components/ui/` dan siap dipakai dengan Tailwind.
+- **Magic UI** — MCP server terdaftar di `mcp-configs/mcp-servers.json` (`@magicuidesign/mcp@latest`, deskripsi "Magic UI components"); aktifkan di `opencode.json` jika dibutuhkan, beri `mcp_*` permission = `ask`.
+
+Keduanya berjalan on-demand sehingga tidak membebani context window saat tidak dipakai.
+
+### Katalog MCP Server (opsional)
+
+`mcp-configs/mcp-servers.json` berisi katalog siap-pasang (tidak otomatis aktif): `github`, `jira`, `firecrawl`, `context7`, `exa-web-search`, `playwright` (MCP), `browser-use` (MCP), `fal-ai`, `magic` (Magic UI), `supabase`, `clickhouse`, `parallel-search`, `memory`, `omega-memory`, `ecc-memory-vault`, `browserbase`, `filesystem`, `codescene`, `memxus`. Aktifkan dengan menambahkannya ke key `mcp` di `opencode.json` (default permission `mcp_*` = `ask`).
+
+---
+
+## Struktur Repositori
+
+```
+~/.config/opencode/
+├── opencode.json            # Konfigurasi utama: agents, commands, instructions, plugin
+├── opencode.jsonc           # Config user minimal (di-merge setelah opencode.json)
+├── AGENTS.md                # Instruksi global (dibaca OpenCode & tool lain)
+├── CONTRIBUTING.md          # Panduan kontribusi ECC
+├── .env.example             # Template variabel environment (copy → .env)
+├── .gitignore               # Proteksi .env, kredensial, cache, dist, log
+├── instructions/
+│   └── INSTRUCTIONS.md      # Rules terkonsolidasi: security, coding style, testing, git
+├── prompts/agents/          # Prompt untuk 25 subagent
+├── skills/                  # 218 skill ECC (11 dimuat via `instructions`)
+├── commands/                # 100 file command shim (26 terdaftar di opencode.json)
+├── plugins/                 # ECC hooks + tools + dotenv loader (entry: index.ts)
+│   ├── ecc-hooks.ts         # Plugin hooks + 8 custom tools
+│   ├── dotenv.ts            # Loader .env global (shell.env)
+│   └── lib/changed-files-store.ts
+├── tools/                   # Source TS 8 custom tool (dikompilasi ke plugins)
+├── mcp-configs/
+│   └── mcp-servers.json     # Katalog MCP server siap-pasang
+├── scripts/                 # Utility ECC (auto-update, claw, dll.)
+├── dist/                    # Output build plugin (parity dengan `./plugins`)
+└── the-security-guide.md    # Referensi keamanan ECC
+```
+
+---
+
+## Prasyarat Sistem
+
+| Kebutuhan | Versi | Dipakai oleh |
+|-----------|-------|--------------|
+| **OpenCode CLI** | 1.18.29 (`/usr/bin/opencode`) | Harness utama |
+| **Node.js** (>18, via fnm) | v24.20.0 | ECC plugin & tools, npm global (playwright, ast-grep) |
+| **npm** (global bin dari fnm) | — | `@playwright/test`, `@ast-grep/cli` |
+| **bun** | 1.4.0 | Tersedia sebagai alternatif package manager |
+| **uv** | 0.12.14 (`~/.local/bin/uv`) | Tool Python: `browser-use`, `strix` |
+| **Python** (env tool via uv) | 3.14 | browser-harness & strix runtime |
+| **Docker daemon** | — | **Wajib** untuk Strix scan (`systemctl start docker`) |
+| **Chromium / headless shell** | 1243 (`~/.cache/ms-playwright`) | Playwright di CLI & `/e2e` |
+| **Git** | — | Plugin superpowers (git-based), ECC scripts |
+
+Semua binary global ada di `PATH` melalui `~/.local/bin` dan profile shell (`.bashrc`/`.zshrc`/`.profile`) — login shell baru selalu menemukan `browser-use`, `strix`, `uv`, `sg`, `playwright`.
+
+---
+
+## Quick Start / Instalasi di Mesin Baru
+
+### 1. Install OpenCode
+
+```bash
+npm install -g opencode        # atau ikuti petunjuk resmi opencode.ai
+opencode --version             # harapkan >= 1.18
+```
+
+### 2. Clone repository konfigurasi ke tempat global
+
+```bash
+git clone <url-repo-ini> ~/.config/opencode
+```
+
+> `opencode.json` di `~/.config/opencode/` otomatis dibaca sebagai config global; tidak perlu menyentuh config proyek.
+
+### 3. Setup plugin lokal
+
+Plugin `./plugins` butuh dependency lokal untuk type SDK (`@opencode-ai/plugin`). OpenCode mengeksekusi source `*.ts` langsung — tidak perlu build:
+
+```bash
+cd ~/.config/opencode
+npm install           # install @opencode-ai/plugin (1.18.29)
+```
+
+### 4. Buat `.env` dari template
+
+```bash
+cp .env.example ~/.config/opencode/.env
+# isi minimal: STRIX_LLM dan LLM_API_KEY (wajib untuk Strix)
+```
+
+### 5. Pasang dependensi global
+
+```bash
+# Node tooling (via npm global dari fnm)
+npm install -g @ast-grep/cli playwright
+
+# Browser runtime untuk Playwright
+npx playwright install chromium            # opsional: --with-deps (butuh sudo)
+
+# Python tooling (via uv)
+uv tool install strix-agent                # binary: strix
+uv tool install browser-use                # binary: browser-use / bu
+```
+
+### 6. (Opsional) Superpowers plugin
+
+Plugin sudah tercantum di `opencode.json`; OpenCode akan mengunduhnya saat start pertama:
 
 ```json
-{
-  "plugin": ["ecc-universal"]
-}
+"plugin": ["./plugins", "superpowers@git+https://github.com/obra/superpowers.git"]
 ```
 
-This loads the ECC OpenCode plugin module from npm:
-- hook/event integrations
-- bundled custom tools exported by the plugin
-
-It does **not** auto-register the full ECC command/agent/instruction catalog in your project config. For the full OpenCode setup, either:
-- run OpenCode inside this repository, or
-- copy the relevant `.opencode/commands/`, `.opencode/prompts/`, `.opencode/instructions/`, and the `instructions`, `agent`, and `command` config entries into your own project
-
-After installation, the `ecc-install` CLI is also available:
+### 7. Verifikasi
 
 ```bash
-npx ecc-universal install typescript
+opencode run --print-logs "Echo hello and list installed commands"
 ```
 
-### Option 2: Direct Use
+Cek bahwa: log memuat plugin ECC (`service=ecc`), tidak ada error load; perintah `/plan`, `/tdd` tersedia; tool `changed-files`, `run-tests` dapat dipanggil agent.
 
-Clone and run OpenCode in the repository:
+---
+
+## Konfigurasi Environment
+
+### Bagaimana `.env` dimuat
+
+OpenCode tidak membaca `.env` secara bawaan. Plugin **`plugins/dotenv.ts`** melakukannya untuk Anda:
+
+1. Saat OpenCode start, plugin me-resolve `~/.config/opencode/.env` (atau `$OPENCODE_CONFIG_DIR/.env` jika diset).
+2. Setiap baris `KEY=value` diparse (dukung `#` komentar, `export `, dan kutip `'`/`"`).
+3. Nilai di-inject ke `process.env` **hanya jika belum ada** — nilai asli shell/daemon selalu menang.
+4. Hook `shell.env` mengembalikan variabel yang ter-load sehingga **semua sub-proses** (Strix, browser-use, MCP server, script ECC) mendapatkannya.
+
+> `.env` tidak di-commit: `~/.config/opencode/.gitignore` memblokir `.env`, `.env.*` (kecuali `.env.example`), `*.key`, kredensial, `dist/`, cache, dan log.
+
+### Variabel WAJIB
+
+| Variabel | Fungsi |
+|----------|--------|
+| `STRIX_LLM` | Model LLM untuk Strix (contoh: `openrouter/z-ai/glm-5.3`, `anthropic/claude-opus-4-7`, `openai/gpt-5`) |
+| `LLM_API_KEY` | API key provider di atas (fallback diterima: `OPENAI_API_KEY`) |
+
+### Variabel Opsional (yang lazim dipakai)
+
+| Variabel | Fungsi |
+|----------|--------|
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Skill/command yang memanggil API LLM langsung |
+| `LLM_API_BASE` | Base URL kustom untuk LLM (alias: `OPENAI_BASE_URL`, `OLLAMA_API_BASE`, dll.) |
+| `BROWSER_USE_API_KEY`, `BU_AUTOSPAWN` | Auth cloud / opt-in autospawn browser-use |
+| `ECC_HOOK_PROFILE` | `minimal` / `standard` / `strict` — mengaktifkan hooks ECC |
+| `ECC_DISABLED_HOOKS` | Daftar hook yang dinonaktifkan (dipisah koma) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN`, `JIRA_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | Kredensial MCP github/jira |
+| `FIRECRAWL_API_KEY`, `EXA_API_KEY`, `ITO_API_KEY` | Kredensial MCP firecrawl/exa/ito |
+| `CLAW_MODEL`, `CLAW_SESSION`, `CLAW_SKILLS` | Helper X (claw) script ECC |
+
+Daftar lengkap + komentar penjelasan ada di **`.env.example`**.
+
+---
+
+## Alur Kerja & Contoh Prompt
+
+### 1. Fitur baru dengan ECC agent roles
+
+Hop dari agent ke agent untuk alur yang terstruktur. Contoh di dalam sesi OpenCode:
+
+```text
+/plan Tambahkan pagination ke endpoint GET /api/users dengan cursor-based
+```
+
+```text
+/tdd Implementasikan repository method berikut berdasar rencana /plan yang sudah dibuat. Pastikan coverage >= 80%
+```
+
+```text
+/code-review Review perubahan di branch `feature/pagination` — fokus pada edge case & inisialisasi state
+```
+
+### 2. Debugging sistematis (Superpowers: systematic-debugging)
+
+```text
+Bugs: pagination ke-dua page mengembalikan data yang sama dengan page pertama.
+Gunakan skill systematic-debugging. Jangan menebak perbaikan —
+pertama reproduksi, cari root cause, baru usulkan fix beserta uji regresi.
+```
+
+### 3. E2E test via Playwright
+
+```text
+/e2e Buat test Playwright untuk flow login → lihat dashboard → logout,
+pakai Page Object Model. Jalankan dan pastikan hijau.
+```
+
+Atau langsung dari terminal:
 
 ```bash
-git clone https://github.com/affaan-m/ECC
-cd ECC
-opencode
+npx playwright test --project=chromium
+npx playwright screenshot https://example.com /tmp/shot.png
 ```
 
-If you also want to apply the ECC home install
-(`node scripts/install-apply.js --target opencode --profile full`), build the
-plugin first so the compiled payload at `.opencode/dist/` exists:
+### 4. Code graph query via ast-grep
+
+```text
+Gunakan ast-grep untuk menemukan semua pemanggilan fungsi `authenticate()` di
+folder src, tampilkan file & baris, lalu usulkan rename yang aman ke `requireAuth()`.
+Sertakan output struktural dari `sg` agar tidak ada yang terlewat oleh regex.
+```
+
+Contoh perintah yang diharapkan dijalankan agent:
 
 ```bash
-node scripts/build-opencode.js   # or: npm run build:opencode
-node scripts/install-apply.js --target opencode --profile full
+sg -p 'authenticate($$$ARGS)' -l ts src --json
 ```
 
-Without `.opencode/dist/index.js`, OpenCode will detect the slash commands
-but silently skip plugin hooks and tools. The installer now fails fast with
-a pointer to this command if the build step is missing.
+### 5. Security audit via Strix
 
-## Features
+```text
+Jalankan Strix headless terhadap direktori proyek ini untuk memeriksa
+kerentanan kode. Ringkas temuan CRITICAL/HIGH dan buat rencana mitigasi urut prioritas.
+```
 
-### Agents (26)
-
-| Agent | Description |
-|-------|-------------|
-| build | Primary coding agent for development work |
-| planner | Implementation planning |
-| architect | System design |
-| code-reviewer | Code review |
-| security-reviewer | Security analysis |
-| tdd-guide | Test-driven development |
-| build-error-resolver | Build error fixes |
-| e2e-runner | E2E testing |
-| doc-updater | Documentation |
-| refactor-cleaner | Dead code cleanup |
-| go-reviewer | Go code review |
-| go-build-resolver | Go build errors |
-| database-reviewer | Database optimization |
-| docs-lookup | Documentation lookup via Context7 |
-| harness-optimizer | Harness config tuning |
-| java-reviewer | Java code review |
-| java-build-resolver | Java build errors |
-| kotlin-reviewer | Kotlin code review |
-| kotlin-build-resolver | Kotlin build errors |
-| loop-operator | Autonomous loop execution |
-| php-reviewer | PHP code review |
-| python-reviewer | Python code review |
-| rust-reviewer | Rust code review |
-| rust-build-resolver | Rust build errors |
-| cpp-reviewer | C++ code review |
-| cpp-build-resolver | C++ build errors |
-
-### Commands (26)
-
-| Command | Description |
-|---------|-------------|
-| `/plan` | Create implementation plan |
-| `/tdd` | TDD workflow |
-| `/code-review` | Review code changes |
-| `/security` | Security review |
-| `/build-fix` | Fix build errors |
-| `/e2e` | E2E tests |
-| `/refactor-clean` | Remove dead code |
-| `/orchestrate` | Multi-agent workflow |
-| `/learn` | Extract patterns |
-| `/checkpoint` | Save progress |
-| `/verify` | Verification loop |
-| `/eval` | Evaluation |
-| `/update-docs` | Update docs |
-| `/update-codemaps` | Update codemaps |
-| `/test-coverage` | Coverage analysis |
-| `/setup-pm` | Package manager |
-| `/go-review` | Go code review |
-| `/go-test` | Go TDD |
-| `/go-build` | Go build fix |
-| `/skill-create` | Generate skills |
-| `/instinct-status` | View instincts |
-| `/instinct-import` | Import instincts |
-| `/instinct-export` | Export instincts |
-| `/evolve` | Cluster instincts |
-| `/promote` | Promote project instincts |
-| `/projects` | List known projects |
-
-### Plugin Hooks
-
-| Hook | Event | Purpose |
-|------|-------|---------|
-| Prettier | `file.edited` | Auto-format JS/TS |
-| TypeScript | `tool.execute.after` | Check for type errors |
-| console.log | `file.edited` | Warn about debug statements |
-| Notification | `session.idle` | Desktop notification (cross-platform) |
-| Security | `tool.execute.before` | Check for secrets |
-| Git Push Reminder | `tool.execute.before` | Remind to review before pushing |
-| Doc File Warning | `tool.execute.before` | Warn about unnecessary documentation |
-| Long Command Reminder | `tool.execute.before` | Remind about long-running commands |
-| Session Context | `session.created` | Load project context |
-| Console Log Audit | `session.idle` | Audit edited files for console.log |
-| File Watcher | `file.watcher.updated` | Track file system changes |
-| Todo Progress | `todo.updated` | Log task completion progress |
-| Shell Environment | `shell.env` | Inject environment variables |
-| Session Compacting | `experimental.session.compacting` | Preserve context across compaction |
-| Permission Auto-Approve | `permission.ask` | Auto-approve safe operations |
-
-### Custom Tools
-
-| Tool | Description |
-|------|-------------|
-| run-tests | Run test suite with options |
-| check-coverage | Analyze test coverage |
-| security-audit | Security vulnerability scan |
-| format-code | Detect formatter and return command |
-| lint-check | Detect linter and return command |
-| git-summary | Generate git summary with branch, status, and diff |
-| changed-files | List files changed in session as a navigable tree |
-| dependency-analyzer | Analyze dependencies for outdated, vulnerable, and unused packages |
-
-## Hook Event Mapping
-
-OpenCode's plugin system maps to Claude Code hooks:
-
-| Claude Code | OpenCode |
-|-------------|----------|
-| PreToolUse | `tool.execute.before` |
-| PostToolUse | `tool.execute.after` |
-| Stop | `session.idle` |
-| SessionStart | `session.created` |
-| SessionEnd | `session.deleted` |
-
-OpenCode has 20+ additional events not available in Claude Code.
-
-### Hook Runtime Controls
-
-OpenCode plugin hooks honor the same runtime controls used by Claude Code/Cursor:
+Perintah yang akan dieksekusi:
 
 ```bash
-export ECC_HOOK_PROFILE=standard
-export ECC_DISABLED_HOOKS="pre:bash:tmux-reminder,post:edit:typecheck"
+strix -n --target .
 ```
 
-- `ECC_HOOK_PROFILE`: `minimal`, `standard` (default), `strict`
-- `ECC_DISABLED_HOOKS`: comma-separated hook IDs to disable
+> Ingat: Docker daemon harus berjalan (`sudo systemctl start docker`) dan `STRIX_LLM` + `LLM_API_KEY` sudah terisi di `.env`.
 
-## Skills
+### 6. Browser automation interaktif (Browser Use)
 
-The default OpenCode config loads 11 curated ECC skills via the `instructions` array:
-
-- coding-standards
-- backend-patterns
-- frontend-patterns
-- frontend-slides
-- security-review
-- tdd-workflow
-- strategic-compact
-- eval-harness
-- verification-loop
-- api-design
-- e2e-testing
-
-Additional specialized skills are shipped in `skills/` but not loaded by default to keep OpenCode sessions lean:
-
-- article-writing
-- content-engine
-- market-research
-- investor-materials
-- investor-outreach
-
-## Configuration
-
-Full configuration in `opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["./plugins"],
-  "instructions": [
-    "skills/tdd-workflow/SKILL.md",
-    "skills/security-review/SKILL.md"
-  ],
-  "agent": { /* 12 agents */ },
-  "command": { /* 24 commands */ }
-}
+```text
+Gunakan browser-use untuk membuka https://login.example.com, login dengan kredensial
+yang ada di variabel env, dan catat daftar item di halaman dashboard.
 ```
 
-The reference config intentionally leaves model selection to OpenCode. Connect a
-provider and select a model in OpenCode; ECC's primary agent uses that global
-selection, and its subagents inherit the invoking primary agent's model.
+### 7. Komponen UI on-demand (shadcn/ui + Magic UI)
 
-## License
+```text
+Tambah komponen shadcn/ui `dialog` dan `dropdown-menu`, lalu buat satu komponen
+Magic UI (via MCP magic) untuk section hero yang animasi. Sesuaikan dengan
+design system proyek setelah generate.
+```
 
-MIT
+---
+
+## Pemecahan Masalah
+
+| Gejala | Solusi |
+|--------|--------|
+| Strix gagal/eror scan | Pastikan Docker daemon berjalan + `STRIX_LLM`/`LLM_API_KEY` ada di `~/.config/opencode/.env` |
+| Plugin hooks tidak berjalan | Plugin di-install dengan `--no-hooks`; set `ECC_HOOK_PROFILE=standard` di `.env` lalu mulai sesi baru |
+| Tool global tidak ketemu (`strix`, `browser-use`) | Buka shell login baru (PATH `~/.local/bin` baru di-load) |
+| Playwright error "browser not installed" | `npx playwright install chromium` |
+| Sub-proses tidak melihat variabel `.env` | Verifikasi `plugins/dotenv.ts` ter-load di log (`--print-logs`); nilai hanya di-inject bila belum ada di environment asli |
+| `dist/` tertinggal dari edit `plugins/*.ts` | Source `./plugins/*.ts` adalah yang dieksekusi OpenCode; rebuild `dist/` hanya untuk parity, tidak wajib |
+
+---
+
+## Lisensi
+
+Repository konfigurasi pribadi; komponen di dalamnya mengikuti lisensi masing-masing (ECC: **MIT**; Superpowers: lihat lisensi obra/superpowers; sisanya tertulis di dokumentasi masing-masing tool).
