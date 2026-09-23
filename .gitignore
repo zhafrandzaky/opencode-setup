@@ -22,8 +22,6 @@ auth.json
 
 # ---- Dependencies / install state ------------------------------------------
 node_modules/
-package.json
-package-lock.json
 bun.lock
 npm-shrinkwrap.json
 install-state

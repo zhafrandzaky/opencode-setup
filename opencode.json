@@ -21,11 +21,6 @@
     "./plugins",
     "superpowers@git+https://github.com/obra/superpowers.git"
   ],
-  "skills": {
-    "paths": [
-      "../skills"
-    ]
-  },
   "agent": {
     "build": {
       "description": "Primary coding agent for development work",

@@ -13,6 +13,11 @@
  * - A value is applied only if the variable is NOT already set in the real
  *   process environment, so a shell/daemon-managed value always wins.
  * - Never overrides existing environment variables.
+ *
+ * IMPORTANT: only plugin functions may be exported from this module.
+ * OpenCode's plugin loader iterates every export and invokes it as a plugin,
+ * so helper functions must stay private (otherwise they get called with a
+ * PluginInput object instead of their real arguments).
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
@@ -23,7 +28,7 @@ import * as path from "path"
 /** Track the variables we actually applied from .env. */
 const appliedEnvKeys = new Set<string>()
 
-export function resolveDotEnvPath(): string {
+function resolveDotEnvPath(): string {
   if (process.env.OPENCODE_CONFIG_DIR) {
     return path.join(process.env.OPENCODE_CONFIG_DIR, ".env")
   }
@@ -39,7 +44,7 @@ export function resolveDotEnvPath(): string {
  * Supports: blank lines, `#` comments, optional `export ` prefix,
  * double/single quotes, and inline `#` comments (space-prefixed).
  */
-export function parseDotEnv(content: string): Record<string, string> {
+function parseDotEnv(content: string): Record<string, string> {
   const out: Record<string, string> = {}
   const lines = content.split(/\r?\n/)
   for (const rawLine of lines) {
@@ -73,7 +78,7 @@ export function parseDotEnv(content: string): Record<string, string> {
   return out
 }
 
-export function loadGlobalDotEnv(): Record<string, string> {
+function loadGlobalDotEnv(): Record<string, string> {
   const envPath = resolveDotEnvPath()
   try {
     if (!fs.existsSync(envPath)) return {}

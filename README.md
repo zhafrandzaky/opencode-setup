@@ -21,7 +21,7 @@ Repository ini adalah **harness konfigurasi global** milik `~/.config/opencode/`
 
 - memuat **26 agent** (1 primary + 25 subagent) untuk peran terkhusus (planner, code-reviewer, tdd-guide, dll.),
 - memuat **26 slash command** yang memetakan prompt ke agent yang tepat (`/plan`, `/tdd`, `/code-review`, ...),
-- memuat **11 skill ECC** sebagai instruction + **218 skill** di `skills/` sebagai pustaka on-demand,
+- memuat **11 skill ECC** sebagai instruction + **218 skill ECC** dan **13 Taste Skill** di `skills/` sebagai pustaka on-demand,
 - menjalankan **plugin ECC hooks + 8 custom tools** (`./plugins`) dan **Obra Superpowers**,
 - **meng-inject environment** dari `~/.config/opencode/.env` ke setiap sub-proses via plugin `plugins/dotenv.ts`,
 - menyediakan **katalog MCP server** siap-pasang di `mcp-configs/mcp-servers.json`.
@@ -40,7 +40,7 @@ Fondasi dari seluruh setup. Terpasang via `node scripts/install-apply.js --targe
 |----------|--------|--------|
 | **Agents** | 26 (1 primary `build` + 25 subagent) | `agent` di `opencode.json`, prompt di `prompts/agents/` |
 | **Commands** | 26 terdaftar (100 file shim di `commands/`) | `command` di `opencode.json` |
-| **Skills** | 218 (11 dimuat via `instructions`, sisanya on-demand) | `skills/` |
+| **Skills** | 231 (218 ECC + 13 Taste Skill; 11 dimuat via `instructions`) | `skills/` |
 | **Custom Tools** | 8 | plugin `./plugins` (`tools/`) |
 | **Rules / Instructions** | 14 file instruction + `AGENTS.md` | lihat `instructions/INSTRUCTIONS.md` |
 
@@ -115,6 +115,23 @@ Dua jalur untuk menambah komponen UI tanpa menulis dari nol, sesuai kebutuhan se
 
 Keduanya berjalan on-demand sehingga tidak membebani context window saat tidak dipakai.
 
+### 9. Taste Skill — 13 Skill Desain Frontend (Anti-Slop)
+
+Kumpulan **13 Agent Skills** (SKILL.md, lisensi MIT, sumber: [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)) yang menaikkan kualitas UI hasil AI: design read, sistem layout/typography/motion, protokol redesign, dan pre-flight check anti-pola generik. Dipasang manual ke `~/.config/opencode/skills/<name>/` (satu folder dengan skill ECC; tidak dikelola ECC sehingga aman dari `ecc repair`).
+
+| Kelompok | Skill |
+|---|---|
+| Inti | `design-taste-frontend` (v2), `design-taste-frontend-v1` (legacy) |
+| Varian model | `gpt-taste` (atur untuk model GPT/Codex) |
+| Redesign & audit | `redesign-existing-projects` |
+| Gaya visual | `high-end-visual-design`, `minimalist-ui`, `industrial-brutalist-ui` |
+| Pipeline | `image-to-code` |
+| Enforcement output | `full-output-enforcement` |
+| Design system export | `stitch-design-taste` |
+| Image generation | `imagegen-frontend-web`, `imagegen-frontend-mobile`, `brandkit` |
+
+Pemakaian: minta agent memakai skill terkait (mis. *"pakai skill design-taste-frontend untuk landing page ini"*), atau agent memilih otomatis saat tugas frontend. Update dari upstream: clone ulang repo lalu salin tiap folder `skills/<folder>` ke `~/.config/opencode/skills/<name>` sesuai `name:` frontmatter.
+
 ### Katalog MCP Server (opsional)
 
 `mcp-configs/mcp-servers.json` berisi katalog siap-pasang (tidak otomatis aktif): `github`, `jira`, `firecrawl`, `context7`, `exa-web-search`, `playwright` (MCP), `browser-use` (MCP), `fal-ai`, `magic` (Magic UI), `supabase`, `clickhouse`, `parallel-search`, `memory`, `omega-memory`, `ecc-memory-vault`, `browserbase`, `filesystem`, `codescene`, `memxus`. Aktifkan dengan menambahkannya ke key `mcp` di `opencode.json` (default permission `mcp_*` = `ask`).
@@ -134,7 +151,7 @@ Keduanya berjalan on-demand sehingga tidak membebani context window saat tidak d
 ├── instructions/
 │   └── INSTRUCTIONS.md      # Rules terkonsolidasi: security, coding style, testing, git
 ├── prompts/agents/          # Prompt untuk 25 subagent
-├── skills/                  # 218 skill ECC (11 dimuat via `instructions`)
+├── skills/                  # 231 skill (218 ECC + 13 Taste Skill)
 ├── commands/                # 100 file command shim (26 terdaftar di opencode.json)
 ├── plugins/                 # ECC hooks + tools + dotenv loader (entry: index.ts)
 │   ├── ecc-hooks.ts         # Plugin hooks + 8 custom tools
@@ -219,11 +236,12 @@ git clone <url-repo-ini> ~/.config/opencode
 
 ### 3. Setup plugin lokal
 
-Plugin `./plugins` butuh dependency lokal untuk type SDK (`@opencode-ai/plugin`). OpenCode mengeksekusi source `*.ts` langsung — tidak perlu build:
+Plugin `./plugins` butuh dependency lokal. OpenCode mengeksekusi source `*.ts` langsung — tidak perlu build:
 
 ```bash
 cd ~/.config/opencode
-npm install           # install @opencode-ai/plugin (1.18.29)
+npm install        # @opencode-ai/plugin + devDeps (typescript, @types/node, @types/bun)
+npx tsc --noEmit   # opsional: quality gate typecheck — harus 0 error
 ```
 
 ### 4. Buat `.env` dari template
@@ -398,6 +416,7 @@ design system proyek setelah generate.
 | Playwright error "browser not installed" | `npx playwright install chromium` |
 | Sub-proses tidak melihat variabel `.env` | Verifikasi `plugins/dotenv.ts` ter-load di log (`--print-logs`); nilai hanya di-inject bila belum ada di environment asli |
 | `dist/` tertinggal dari edit `plugins/*.ts` | Source `./plugins/*.ts` adalah yang dieksekusi OpenCode; rebuild `dist/` hanya untuk parity, tidak wajib |
+| `ecc repair` menimpa kustomisasi | **Jangan jalankan tanpa backup**: 3 file managed sengaja dimodifikasi (`README.md`, `opencode.json`, `plugins/index.ts`). Repair mengembalikannya ke versi asli ECC dan menghapus kustomisasi (README, entry plugin superpowers, registrasi dotenv). Restore dari repo git bila perlu |
 
 ---
 
