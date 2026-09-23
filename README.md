@@ -2,6 +2,8 @@
 
 > Konfigurasi global **Everything Claude Code (ECC) 2.2.1** untuk **OpenCode** — agent orchestrasi, skill, command, hook/plugin, serta integrasi tooling global (Playwright, ast-grep, Browser Use, Strix, Superpowers, dan dotenv) yang siap pakai di mana pun OpenCode dijalankan.
 
+> **Baru di mesin baru?** Ikuti panduan langkah-demi-langkah + checklist verifikasi di [`SETUP.md`](SETUP.md).
+
 | Bagian | Isi |
 |--------|-----|
 | [Overview](#overview--pendahuluan) | Apa repository ini dan apa saja isinya |
@@ -12,6 +14,7 @@
 | [Konfigurasi Environment](#konfigurasi-environment) | `.env.example`, auto-load, variabel wajib vs opsional |
 | [Alur Kerja & Contoh Prompt](#alur-kerja--contoh-prompt) | Contoh nyata coding, debugging, E2E, code graph, security audit |
 | [Pemecahan Masalah](#pemecahan-masalah) | Masalah umum & perbaikannya |
+| [**SETUP.md**](SETUP.md) | Panduan instalasi terpisah, dari nol sampai terverifikasi |
 
 ---
 
@@ -218,6 +221,8 @@ fnm current                                # mis. v24.20.0
 ---
 
 ## Quick Start / Instalasi di Mesin Baru
+
+> Versi ringkas ada di bawah; panduan lengkap + checklist verifikasi: [`SETUP.md`](SETUP.md).
 
 ### 1. Install OpenCode
 
