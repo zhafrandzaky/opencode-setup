@@ -18,7 +18,6 @@ auth.json
 *_API_KEY*
 *.token
 *.secret
-~/.strix/
 
 # ---- Dependencies / install state ------------------------------------------
 node_modules/
