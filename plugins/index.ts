@@ -1,15 +1,22 @@
 /**
- * ECC Plugins for OpenCode
+ * Directory entrypoint kept for V1 compatibility.
  *
- * This module exports all ECC plugins for OpenCode integration.
- * Plugins provide hook-based automation that mirrors Claude Code's hook system
- * while taking advantage of OpenCode's more sophisticated 20+ event types.
+ * OpenCode V2 auto-discovers every top-level file in this directory
+ * (ecc-hooks.ts, dotenv.ts), so this module is a harmless no-op there.
+ * V1 runtimes that load the `./plugins` directory resolve this entry; the
+ * named exports below keep the original V1 plugins available.
  */
 
-export { ECCHooksPlugin, default } from "./ecc-hooks.js"
-
-// Global .env loader (loads ~/.config/opencode/.env into every subprocess)
-export { dotenvPlugin, default as dotenv } from "./dotenv.js"
-
-// Re-export for named imports
 export * from "./ecc-hooks.js"
+export { dotenvPlugin } from "./dotenv.js"
+
+export default {
+  id: "ecc.index",
+  async setup(): Promise<() => void> {
+    return () => {}
+  },
+  /** V1 object entrypoint compatibility. */
+  async server(): Promise<Record<string, unknown>> {
+    return {}
+  },
+}

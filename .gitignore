@@ -18,6 +18,7 @@ auth.json
 *_API_KEY*
 *.token
 *.secret
+service.json
 
 # ---- Dependencies / install state ------------------------------------------
 node_modules/

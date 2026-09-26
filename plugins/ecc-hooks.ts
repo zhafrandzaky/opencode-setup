@@ -16,8 +16,8 @@
 import type { PluginInput } from "@opencode-ai/plugin"
 import * as fs from "fs"
 import * as path from "path"
-import changedFilesTool from "../tools/changed-files.js"
-import dependencyAnalyzerTool from "../tools/dependency-analyzer.js"
+import changedFilesTool from "../tools/changed-files.ts"
+import dependencyAnalyzerTool from "../tools/dependency-analyzer.ts"
 
 /**
  * Type definitions for better type safety
@@ -111,9 +111,9 @@ export const ECCHooksPlugin: ECCHooksPluginFn = async ({
   // This plugin is OpenCode's startup entry point, so a static import
   // failure here previously crashed the whole plugin -- and with it, the
   // entire OpenCode session -- before any hooks could load (see #2530).
-  let changedFilesStore: typeof import("./lib/changed-files-store.js") | undefined
+  let changedFilesStore: typeof import("./lib/changed-files-store.ts") | undefined
   try {
-    const store = await import("./lib/changed-files-store.js")
+    const store = await import("./lib/changed-files-store.ts")
     store.initStore(worktreePath)
     changedFilesStore = store
   } catch {
@@ -481,7 +481,7 @@ export const ECCHooksPlugin: ECCHooksPluginFn = async ({
      * Triggers: Before shell command execution
      * Action: Sets PROJECT_ROOT, PACKAGE_MANAGER, DETECTED_LANGUAGES, ECC_VERSION
      */
-    "shell.env": async () => {
+    "shell.env": async (_input: { cwd: string }, output: { env: Record<string, string> }) => {
       const env: Record<string, string> = {
         ECC_VERSION: getECCVersion(),
         ECC_PLUGIN: "true",
@@ -523,7 +523,8 @@ export const ECCHooksPlugin: ECCHooksPluginFn = async ({
         env.PRIMARY_LANGUAGE = detected[0]
       }
 
-      return env
+      // OpenCode reads the supplied output object and ignores callback return values.
+      output.env = { ...output.env, ...env }
     },
 
     /**
@@ -531,13 +532,16 @@ export const ECCHooksPlugin: ECCHooksPluginFn = async ({
      * OpenCode-specific: Control context compaction behavior
      *
      * Triggers: Before context compaction
-     * Action: Push ECC context block and custom compaction prompt
+     * Action: Push ECC context block and compaction guidance
      */
-    "experimental.session.compacting": async () => {
+    "experimental.session.compacting": async (
+      _input: { sessionID: string },
+      output: { context: string[]; prompt?: string }
+    ) => {
       const contextBlock = [
         "# ECC Context (preserve across compaction)",
         "",
-        "## Active Plugin: ECC v2.2.1",
+        "## Active Plugin: ECC v2.2.2",
         "- Hooks: file.edited, tool.execute.before/after, session.created/idle/deleted, shell.env, compacting, permission.ask",
         "- Tools: run-tests, check-coverage, security-audit, format-code, lint-check, git-summary, changed-files",
         "- Agents: 13 specialized (planner, architect, tdd-guide, code-reviewer, security-reviewer, build-error-resolver, e2e-runner, refactor-cleaner, doc-updater, go-reviewer, go-build-resolver, database-reviewer, python-reviewer)",
@@ -558,9 +562,16 @@ export const ECCHooksPlugin: ECCHooksPluginFn = async ({
         contextBlock.push("")
       }
 
-      return {
-        context: contextBlock.join("\n"),
-        compaction_prompt: "Focus on preserving: 1) Current task status and progress, 2) Key decisions made, 3) Files created/modified, 4) Remaining work items, 5) Any security concerns flagged. Discard: verbose tool outputs, intermediate exploration, redundant file listings.",
+      const eccContext = [
+        contextBlock.join("\n"),
+        "Focus on preserving: 1) Current task status and progress, 2) Key decisions made, 3) Files created/modified, 4) Remaining work items, 5) Any security concerns flagged. Discard: verbose tool outputs, intermediate exploration, redundant file listings.",
+      ]
+
+      // OpenCode requires output assignment and skips context when a prompt is set.
+      if (output.prompt !== undefined) {
+        output.prompt = [output.prompt, ...eccContext].join("\n\n")
+      } else {
+        output.context = [...output.context, ...eccContext]
       }
     },
 
@@ -621,4 +632,54 @@ export const ECCHooksPlugin: ECCHooksPluginFn = async ({
   }
 }
 
-export default ECCHooksPlugin
+/**
+ * Dual OpenCode entrypoint.
+ *
+ * OpenCode 2 calls `setup(ctx)`; OpenCode 1 (1.18.29+) calls `server()` and
+ * receives the V1 hook map below. The V2 implementation is imported lazily so
+ * that an OpenCode 1 runtime never evaluates the V2-only module.
+ */
+type OpenCodeV2Context = import("@opencode/plugin").Plugin.Context
+
+/**
+ * OpenCode 1.18.x calls `setup()` too, but with a partial context that lacks
+ * `location`, `tool`, `event`, `shell`, `permission`, and `session`. Only run
+ * the V2 implementation when the domains it depends on are actually present;
+ * otherwise OpenCode 1 keeps using `server()` below.
+ */
+function isOpenCodeV2Context(value: unknown): value is OpenCodeV2Context {
+  if (!value || typeof value !== "object") return false
+  const ctx = value as Record<string, unknown>
+  const location = ctx.location as { directory?: unknown } | undefined
+  const tool = ctx.tool as { hook?: unknown } | undefined
+  const event = ctx.event as { subscribe?: unknown } | undefined
+  const shell = ctx.shell as { hook?: unknown } | undefined
+  const permission = ctx.permission as { hook?: unknown } | undefined
+  const session = ctx.session as { hook?: unknown } | undefined
+
+  return (
+    typeof location?.directory === "string" &&
+    typeof tool?.hook === "function" &&
+    typeof event?.subscribe === "function" &&
+    typeof shell?.hook === "function" &&
+    typeof permission?.hook === "function" &&
+    typeof session?.hook === "function"
+  )
+}
+
+const eccOpenCodePlugin = {
+  id: "ecc",
+  async setup(ctx: OpenCodeV2Context): Promise<() => void> {
+    if (!isOpenCodeV2Context(ctx)) {
+      // OpenCode 1's partial envelope: hooks are delivered through `server()`.
+      return () => {}
+    }
+    const { setupV2 } = await import("./lib/ecc-hooks-v2.ts")
+    return setupV2(ctx)
+  },
+  async server(input: PluginInput): Promise<Record<string, unknown>> {
+    return ECCHooksPlugin(input)
+  },
+}
+
+export default eccOpenCodePlugin

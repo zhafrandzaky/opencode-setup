@@ -55,6 +55,8 @@ Fondasi dari seluruh setup. Terpasang via `node scripts/install-apply.js --targe
 **Plugin hooks** (opt-in via `ECC_HOOK_PROFILE`, lihat [Konfigurasi Environment](#konfigurasi-environment)): auto-format Prettier, TypeScript check, peringatan `console.log`, notifikasi desktop, deteksi secret, pengingat git push, audit file doc, session context, compacting, todo progress, `shell.env` (inject environment), dan permission auto-approve. Profil: `minimal` / `standard` / `strict`, plus fitur nonaktif per-hook via `ECC_DISABLED_HOOKS`.
 
 > Catatan: pemasangan dibuat dengan `--no-hooks`; hooks hanya aktif jika Anda sengaja mengatur `ECC_HOOK_PROFILE` di `.env`.
+>
+> **Kompatibilitas OpenCode v2:** entrypoint plugin di sini sudah dual V1/V2 — implementasi v2 ada di `plugins/lib/ecc-hooks-v2.ts` + `plugins/lib/v2-tools.ts` dan didaftarkan lewat `setup(ctx)`.
 
 ### 2. Obra Superpowers Plugin — Skill Tambahan
 
@@ -156,10 +158,11 @@ Pemakaian: minta agent memakai skill terkait (mis. *"pakai skill design-taste-fr
 ├── prompts/agents/          # Prompt untuk 25 subagent
 ├── skills/                  # 231 skill (218 ECC + 13 Taste Skill)
 ├── commands/                # 100 file command shim (26 terdaftar di opencode.json)
-├── plugins/                 # ECC hooks + tools + dotenv loader (entry: index.ts)
-│   ├── ecc-hooks.ts         # Plugin hooks + 8 custom tools
-│   ├── dotenv.ts            # Loader .env global (shell.env)
-│   └── lib/changed-files-store.ts
+├── plugins/                 # Plugin dual V1/V2 (OpenCode v2: auto-discovered)
+│   ├── ecc-hooks.ts         # Entry dual: V1 hooks + V2 setup (hooks + 8 custom tools)
+│   ├── dotenv.ts            # Loader .env global (shell.env V1 / ctx.shell.hook V2)
+│   ├── index.ts             # Entry direktori (no-op di V2, export V1)
+│   └── lib/                 # ecc-hooks-v2.ts · v2-tools.ts · changed-files-store.ts
 ├── tools/                   # Source TS 8 custom tool (dikompilasi ke plugins)
 ├── mcp-configs/
 │   └── mcp-servers.json     # Katalog MCP server siap-pasang
@@ -174,7 +177,7 @@ Pemakaian: minta agent memakai skill terkait (mis. *"pakai skill design-taste-fr
 
 | Kebutuhan | Versi | Dipakai oleh |
 |-----------|-------|--------------|
-| **OpenCode CLI** | 1.18.29 (`/usr/bin/opencode`) | Harness utama |
+| **OpenCode CLI** | ≥ 2.0.15 (`/usr/bin/opencode`) | Harness utama (plugin API v2) |
 | **Node.js** (>18, via fnm) | v24.20.0 | ECC plugin & tools, npm global (playwright, ast-grep) |
 | **npm** (global bin dari fnm) | — | `@playwright/test`, `@ast-grep/cli` |
 | **bun** | 1.4.0 | Tersedia sebagai alternatif package manager |
@@ -228,7 +231,7 @@ fnm current                                # mis. v24.20.0
 
 ```bash
 npm install -g opencode        # atau ikuti petunjuk resmi opencode.ai
-opencode --version             # harapkan >= 1.18
+opencode --version             # harapkan >= 2.0
 ```
 
 ### 2. Clone repository konfigurasi ke tempat global
@@ -299,7 +302,7 @@ OpenCode tidak membaca `.env` secara bawaan. Plugin **`plugins/dotenv.ts`** mela
 3. Nilai di-inject ke `process.env` **hanya jika belum ada** — nilai asli shell/daemon selalu menang.
 4. Hook `shell.env` mengembalikan variabel yang ter-load sehingga **semua sub-proses** (Strix, browser-use, MCP server, script ECC) mendapatkannya.
 
-> `.env` tidak di-commit: `~/.config/opencode/.gitignore` memblokir `.env`, `.env.*` (kecuali `.env.example`), `*.key`, kredensial, `dist/`, cache, dan log.
+> `.env` tidak di-commit: `~/.config/opencode/.gitignore` memblokir `.env`, `.env.*` (kecuali `.env.example`), `*.key`, kredensial, `dist/`, cache, dan log. `service.json` (kredensial service lokal OpenCode v2) juga diblokir.
 
 ### Variabel WAJIB
 
@@ -417,6 +420,7 @@ design system proyek setelah generate.
 |--------|--------|
 | Strix gagal/eror scan | Pastikan Docker daemon berjalan + `STRIX_LLM`/`LLM_API_KEY` ada di `~/.config/opencode/.env` |
 | Plugin hooks tidak berjalan | Plugin di-install dengan `--no-hooks`; set `ECC_HOOK_PROFILE=standard` di `.env` lalu mulai sesi baru |
+| Plugin gagal load setelah OpenCode v2 | Plugin di repo ini sudah dual V1/V2; reload/restart OpenCode. Plugin baru harus memakai format v2 (`export default { id, setup }`) atau entrypoint dual |
 | Tool global tidak ketemu (`strix`, `browser-use`) | Buka shell login baru (PATH `~/.local/bin` baru di-load) |
 | Playwright error "browser not installed" | `npx playwright install chromium` |
 | Sub-proses tidak melihat variabel `.env` | Verifikasi `plugins/dotenv.ts` ter-load di log (`--print-logs`); nilai hanya di-inject bila belum ada di environment asli |

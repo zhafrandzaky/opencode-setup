@@ -20,7 +20,7 @@
 | Linux / macOS | CachyOS (Arch-based) | Windows: gunakan WSL |
 | Git | — | Clone repo + plugin Superpowers (git-based) |
 | Node.js + npm | v24.20.0 (fnm) | Minimal ≥18 |
-| OpenCode CLI | 1.18.29 | `npm install -g opencode` |
+| OpenCode CLI | ≥ 2.0.15 | `npm install -g opencode` atau paket distro |
 | Docker | — | **Hanya diperlukan untuk Strix** |
 | uv | 0.12.14 | Untuk `strix` & `browser-use` (Python tools) |
 | Fish shell | 4.9.3 | Opsional — konfigurasi di Lampiran |
@@ -46,7 +46,7 @@ cd ~/.config/opencode
 ## 2. Dependensi Plugin
 
 ```bash
-npm install
+npm install          # @opencode-ai/plugin (V1) + @opencode/plugin (V2) + devDeps
 npx tsc --noEmit     # quality gate: harus 0 error
 ```
 
@@ -112,6 +112,7 @@ export NODE_PATH="$(npm root -g)"
 opencode --version
 which strix browser-use uv sg playwright
 npx tsc --noEmit                       # → exit 0
+opencode plugin list                   # → ecc, ecc.dotenv, ecc.index, superpowers
 
 # 2. Smoke test runtime (plugin + skill + shell)
 opencode run "Jalankan: echo READY. Lalu sebutkan apakah skill tdd-workflow,
@@ -130,6 +131,7 @@ Checklist:
 ## 8. Catatan ECC
 
 - **Semua katalog ECC sudah ada di repo ini** (skills, commands, prompts, instructions) — tidak perlu menjalankan installer ECC untuk pemakaian normal.
+- **OpenCode v2:** plugin ECC di sini sudah dual-entrypoint (V1/V2); implementasi v2 di `plugins/lib/ecc-hooks-v2.ts` + `plugins/lib/v2-tools.ts`.
 - Paket ECC (`ecc-universal`) hanya diperlukan jika Anda ingin `ecc doctor` / `ecc update`.
 - **Jangan jalankan `ecc repair` pada setup ini**: 3 file sengaja dimodifikasi (`README.md`, `opencode.json`, `plugins/index.ts`) dan akan ditimpa versi asli ECC. Detail: tabel Pemecahan Masalah di `README.md`.
 - `ecc-install-state.json` tidak disertakan (berisi path machine-specific) — mesin baru akan melaporkan "no install-state" pada ECC CLI; **tidak memengaruhi runtime OpenCode**.
@@ -152,6 +154,7 @@ npx tsc --noEmit     # pastikan masih 0 error
 - Secrets hanya di `~/.config/opencode/.env` (gitignored) dan di credential store OpenCode.
 - Rotate API key jika pernah ter-expose.
 - Jangan commit `auth.json`, `*.key`, `*credentials*` — pola sudah diblokir `.gitignore`.
+- `service.json` (kredensial service lokal OpenCode v2) otomatis di-gitignore.
 
 ## 11. Troubleshooting
 
@@ -187,7 +190,7 @@ fnm current
 
 ## Lingkungan Acuan (yang diuji)
 
-CachyOS · OpenCode 1.18.29 · Node v24.20.0 (fnm) · npm 11.19.0 · bun 1.4.0 · uv 0.12.14 ·
+CachyOS · OpenCode 2.0.15 · Node v24.20.0 (fnm) · npm 11.19.0 · bun 1.4.0 · uv 0.12.14 ·
 Playwright 1.63.0 (Chromium 1243) · ast-grep 0.45.3 · Strix 1.6.2 · browser-use 0.1.13 · Fish 4.9.3
 
 Versi lebih baru umumnya kompatibel; jika ada perbedaan perilaku, cek `README.md` dan changelog masing-masing tool.

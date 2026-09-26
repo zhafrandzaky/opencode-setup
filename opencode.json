@@ -17,10 +17,6 @@
     "skills/strategic-compact/SKILL.md",
     "skills/eval-harness/SKILL.md"
   ],
-  "plugin": [
-    "./plugins",
-    "superpowers@git+https://github.com/obra/superpowers.git"
-  ],
   "agent": {
     "build": {
       "description": "Primary coding agent for development work",
@@ -443,5 +439,8 @@
   },
   "permission": {
     "mcp_*": "ask"
-  }
+  },
+  "plugins": [
+    "superpowers@git+https://github.com/obra/superpowers.git"
+  ]
 }

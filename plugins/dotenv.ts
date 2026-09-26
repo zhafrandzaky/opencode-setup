@@ -1,23 +1,22 @@
 /**
- * Global .env loader plugin for OpenCode
+ * Global .env loader plugin for OpenCode (dual V1/V2 entrypoint).
  *
  * Loads `~/.config/opencode/.env` (or `$OPENCODE_CONFIG_DIR/.env` when set)
  * into the OpenCode process environment at startup, and injects those
- * variables into every shell/tool subprocess via the `shell.env` hook.
+ * variables into every shell/tool subprocess. This lets globally-installed
+ * tools (Strix, browser-use, Playwright, MCP servers, ECC scripts, ...) pick
+ * up their credentials without exporting them in each shell profile.
  *
- * This lets globally-installed tools (Strix, browser-use, Playwright, MCP
- * servers, ECC scripts, ...) pick up their credentials and settings without
- * being exported in each shell profile.
+ * - OpenCode V1 calls the legacy function entrypoint (`dotenvPlugin`, also
+ *   exposed through `server()` for V1.18.29+ object entrypoints) which
+ *   registers the `shell.env` hook.
+ * - OpenCode V2 calls `setup(ctx)` on the default object and registers
+ *   `ctx.shell.hook("create.before")`.
  *
  * Rules:
  * - A value is applied only if the variable is NOT already set in the real
  *   process environment, so a shell/daemon-managed value always wins.
- * - Never overrides existing environment variables.
- *
- * IMPORTANT: only plugin functions may be exported from this module.
- * OpenCode's plugin loader iterates every export and invokes it as a plugin,
- * so helper functions must stay private (otherwise they get called with a
- * PluginInput object instead of their real arguments).
+ * - Helper functions stay private: V1 iterates module exports as plugins.
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
@@ -56,7 +55,7 @@ function parseDotEnv(content: string): Record<string, string> {
     const eqIndex = cleaned.indexOf("=")
     if (eqIndex === -1) continue
 
-    let key = cleaned.slice(0, eqIndex).trim()
+    const key = cleaned.slice(0, eqIndex).trim()
     let value = cleaned.slice(eqIndex + 1).trim()
 
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue
@@ -95,6 +94,20 @@ function loadGlobalDotEnv(): Record<string, string> {
   }
 }
 
+/** Environment overrides loaded from `.env` (only the ones we applied). */
+function appliedEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const key of appliedEnvKeys) {
+    const value = process.env[key]
+    if (value !== undefined) env[key] = value
+  }
+  return env
+}
+
+// ---------------------------------------------------------------------------
+// OpenCode V1 (legacy function entrypoint)
+// ---------------------------------------------------------------------------
+
 type DotEnvPluginFn = (input: PluginInput) => Promise<Record<string, unknown>>
 
 export const dotenvPlugin: DotEnvPluginFn = async () => {
@@ -106,14 +119,41 @@ export const dotenvPlugin: DotEnvPluginFn = async () => {
      * every shell/tool subprocess OpenCode spawns.
      */
     "shell.env": async () => {
-      const env: Record<string, string> = {}
-      for (const key of appliedEnvKeys) {
-        const value = process.env[key]
-        if (value !== undefined) env[key] = value
-      }
-      return env
+      loadGlobalDotEnv()
+      return appliedEnv()
     },
   }
 }
 
-export default dotenvPlugin
+// ---------------------------------------------------------------------------
+// OpenCode V2 (default definition with id + setup)
+// ---------------------------------------------------------------------------
+
+type OpenCodeV2Context = import("@opencode/plugin").Plugin.Context
+
+export default {
+  id: "ecc.dotenv",
+  async setup(ctx: OpenCodeV2Context): Promise<() => void> {
+    loadGlobalDotEnv()
+
+    // V1.18.x also calls setup() with a partial envelope lacking `shell`.
+    if (typeof ctx?.shell?.hook === "function") {
+      await ctx.shell.hook("create.before", (event) => {
+        // Re-read on every shell command so a long-lived OpenCode service
+        // picks up values added to .env after startup (new keys only).
+        loadGlobalDotEnv()
+        const env = appliedEnv()
+        if (!event.env) return
+        for (const [key, value] of Object.entries(env)) {
+          if (event.env[key] === undefined) event.env[key] = value
+        }
+      })
+    }
+
+    return () => {}
+  },
+  /** V1.18.29+ object entrypoints call server(); older V1 uses named exports. */
+  async server(input: PluginInput): Promise<Record<string, unknown>> {
+    return dotenvPlugin(input)
+  },
+}
