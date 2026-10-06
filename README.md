@@ -15,6 +15,7 @@
 | [Alur Kerja & Contoh Prompt](#alur-kerja--contoh-prompt) | Contoh nyata coding, debugging, E2E, code graph, security audit |
 | [Pemecahan Masalah](#pemecahan-masalah) | Masalah umum & perbaikannya |
 | [**SETUP.md**](SETUP.md) | Panduan instalasi terpisah, dari nol sampai terverifikasi |
+| [**ANTIGRAVITY.md**](ANTIGRAVITY.md) | Port konfigurasi ke Antigravity IDE (skills, agents, workflows, MCP) |
 
 ---
 
@@ -139,7 +140,11 @@ Pemakaian: minta agent memakai skill terkait (mis. *"pakai skill design-taste-fr
 
 ### Katalog MCP Server (opsional)
 
-`mcp-configs/mcp-servers.json` berisi katalog siap-pasang (tidak otomatis aktif): `github`, `jira`, `firecrawl`, `context7`, `exa-web-search`, `playwright` (MCP), `browser-use` (MCP), `fal-ai`, `magic` (Magic UI), `supabase`, `clickhouse`, `parallel-search`, `memory`, `omega-memory`, `ecc-memory-vault`, `browserbase`, `filesystem`, `codescene`, `memxus`. Aktifkan dengan menambahkannya ke key `mcp` di `opencode.json` (default permission `mcp_*` = `ask`).
+`mcp-configs/mcp-servers.json` berisi katalog siap-pasang (tidak otomatis aktif) — **35 server**: GitHub, Jira, Firecrawl, Context7, Exa, Playwright, browser-use, Cloudflare, Supabase, ClickHouse, Vercel, Railway, memory, dan lainnya. Aktifkan dengan menambahkannya ke key `mcp` di `opencode.json` (default permission `mcp_*` = `ask`).
+
+### 10. Integrasi Antigravity IDE
+
+Seluruh komponen portabel dari repo ini sudah dipetakan ke config global Antigravity IDE (`~/.gemini/`): **232 skill**, **25 agen**, **26 workflow**, rules global, plugin **Superpowers**, dan **MCP: 4 server aktif** + 29 katalog referensi. Detail pemasangan, gap (hooks/custom tools/dotenv + padanannya), dan cara re-sync ada di [`ANTIGRAVITY.md`](ANTIGRAVITY.md).
 
 ---
 
