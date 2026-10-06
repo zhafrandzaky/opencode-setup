@@ -51,6 +51,37 @@
    GUI app tidak membaca `~/.bashrc`; gunakan `systemctl --user set-environment KEY=...` +
    restart IDE, atau jalankan IDE dari terminal.
 
+## Antigravity CLI (`agy` 1.3.0) — terverifikasi 2026-10-06
+
+| Cek | Hasil |
+|---|---|
+| `agy mcp list` | ✅ 4 server (context7, memory, parallel-search, playwright) — enabled |
+| Skills | ✅ terbaca dari `~/.gemini/config/skills/` (satu-satunya path yang dikenali AGY+CLI+IDE) |
+| Rules | ✅ `user_global` (`config/AGENTS.md`) + `config/rules/ecc-instructions.md` |
+| Agents | ✅ 25 subagent global terlihat (`~/.gemini/config/agents/`) |
+| Workflows | ✅ 26 slash command (`/plan`, `/tdd`, ... `/projects`) |
+| Plugin superpowers | ✅ terdaftar — `agy plugins list` mencatat `skills: 15 processed` |
+
+**Registrasi plugin ke CLI** — `agy plugin install <target>` butuh **path direktori**, dan tujuan install = `~/.gemini/config/plugins/` (lokasi global yang sama). Jika bundle sudah ada di tujuan, install langsung gagal ("source and destination are the same directory"). Prosedur yang terbukti:
+
+```bash
+cp -r ~/.gemini/config/plugins/superpowers /tmp/sp-plugin
+rm -rf ~/.gemini/config/plugins/superpowers
+agy plugin install /tmp/sp-plugin     # menyalin balik + register (skills: 15 processed)
+rm -rf /tmp/sp-plugin
+```
+
+Pada versi CLI yang lebih baru, cara resmi Superpowers: `agy plugin install https://github.com/obra/superpowers` (bundle manual tidak diperlukan).
+
+**Verifikasi cepat CLI:**
+
+```bash
+agy mcp list                          # daftar MCP
+agy plugins list                      # plugin terdaftar
+agy -p "Sebutkan 3 skill dan nama workflow global" --print-timeout 120s
+# prompt headless yang butuh tool: tambahkan --dangerously-skip-permissions (hati-hati)
+```
+
 ## Cara re-sync (mesin baru / update)
 
 Jalankan dari `~/.config/opencode/` (semua idempoten, aman diulang):
@@ -101,4 +132,5 @@ Temuan saat verifikasi (2026-10-06): **Antigravity IDE tetap menjalankan semua s
 - Server lain ada di `mcp_catalog.reference.json` (file ini **tidak** dibaca Antigravity).
 - Untuk mengaktifkan server tertentu: salin entri-nya dari file referensi ke `mcp_config.json`, isi kredensial di blok `env`/`headers`, lalu reload MCP dari UI.
 - Setelah mengubah `mcp_config.json`, lakukan **reload MCP** lewat panel: `… → MCP Servers → Manage MCP Servers` (atau restart IDE) agar instance lama dihentikan.
-- [ ] Cek di UI Antigravity: panel **Customizations** (rules/workflows), `/` (workflows), **MCP Store → View raw config**, dan daftar skills
+- [ ] Cek di UI Antigravity IDE: panel **Customizations** (rules/workflows), `/` (workflows), **MCP Store → View raw config**, dan daftar skills
+- [x] CLI `agy`: MCP list ✔ · rules ✔ · agents ✔ · 26 workflow ✔ · plugin superpowers terdaftar ✔
